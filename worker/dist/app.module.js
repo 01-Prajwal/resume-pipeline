@@ -9,6 +9,7 @@ import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ResumeProcessor } from './resume.processor.js';
+import { PdfParserService } from './pdf/pdf-parser.service.js';
 let AppModule = class AppModule {
 };
 AppModule = __decorate([
@@ -25,7 +26,7 @@ AppModule = __decorate([
                 },
             }),
         ],
-        providers: [ResumeProcessor],
+        providers: [ResumeProcessor, PdfParserService],
     })
 ], AppModule);
 export { AppModule };

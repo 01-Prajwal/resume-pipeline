@@ -2,12 +2,16 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { PrismaService } from './prisma/prisma.service.js';
+import { PdfParserService } from './pdf/pdf-parser.service.js';
 
 @Processor('resume-processing', { concurrency: 2 })
 export class ResumeProcessor extends WorkerHost {
   private readonly logger = new Logger(ResumeProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pdfParser: PdfParserService,
+  ) {
     super();
   }
 
@@ -17,20 +21,19 @@ export class ResumeProcessor extends WorkerHost {
 
     this.logger.log(`Processing ${resumeId} (attempt ${attempt})`);
 
-    await this.prisma.resume.update({
+    const resume = await this.prisma.resume.update({
       where: { id: resumeId },
       data: { status: 'PROCESSING', attempts: attempt },
     });
 
-    // Stand-in for the real work (PDF parsing lands here in step 7)
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    const { text, pages } = await this.pdfParser.parse(resume.filePath);
 
     await this.prisma.resume.update({
       where: { id: resumeId },
-      data: { status: 'DONE', extractedText: '(not parsed yet)' },
+      data: { status: 'DONE', extractedText: text },
     });
 
-    this.logger.log(`Done ${resumeId}`);
-    return { resumeId };
+    this.logger.log(`Done ${resumeId} — ${text.length} chars from ${pages} pages`);
+    return { resumeId, pages, chars: text.length };
   }
 }

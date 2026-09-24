@@ -11,33 +11,37 @@ var ResumeProcessor_1;
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service.js';
+import { PdfParserService } from './pdf/pdf-parser.service.js';
 let ResumeProcessor = ResumeProcessor_1 = class ResumeProcessor extends WorkerHost {
     prisma;
+    pdfParser;
     logger = new Logger(ResumeProcessor_1.name);
-    constructor(prisma) {
+    constructor(prisma, pdfParser) {
         super();
         this.prisma = prisma;
+        this.pdfParser = pdfParser;
     }
     async process(job) {
         const { resumeId } = job.data;
         const attempt = job.attemptsMade + 1;
         this.logger.log(`Processing ${resumeId} (attempt ${attempt})`);
-        await this.prisma.resume.update({
+        const resume = await this.prisma.resume.update({
             where: { id: resumeId },
             data: { status: 'PROCESSING', attempts: attempt },
         });
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        const { text, pages } = await this.pdfParser.parse(resume.filePath);
         await this.prisma.resume.update({
             where: { id: resumeId },
-            data: { status: 'DONE', extractedText: '(not parsed yet)' },
+            data: { status: 'DONE', extractedText: text },
         });
-        this.logger.log(`Done ${resumeId}`);
-        return { resumeId };
+        this.logger.log(`Done ${resumeId} — ${text.length} chars from ${pages} pages`);
+        return { resumeId, pages, chars: text.length };
     }
 };
 ResumeProcessor = ResumeProcessor_1 = __decorate([
     Processor('resume-processing', { concurrency: 2 }),
-    __metadata("design:paramtypes", [PrismaService])
+    __metadata("design:paramtypes", [PrismaService,
+        PdfParserService])
 ], ResumeProcessor);
 export { ResumeProcessor };
 //# sourceMappingURL=resume.processor.js.map

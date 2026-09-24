@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ResumeProcessor } from './resume.processor.js';
+import { PdfParserService } from './pdf/pdf-parser.service.js';
 
 @Module({
   imports: [
@@ -17,6 +18,6 @@ import { ResumeProcessor } from './resume.processor.js';
       },
     }),
   ],
-   providers: [ResumeProcessor],
+providers: [ResumeProcessor, PdfParserService],
 })
 export class AppModule {}
