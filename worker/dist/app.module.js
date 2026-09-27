@@ -10,6 +10,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ResumeProcessor } from './resume.processor.js';
 import { PdfParserService } from './pdf/pdf-parser.service.js';
+import { StatusPublisherService } from './events/status-publisher.service.js';
 let AppModule = class AppModule {
 };
 AppModule = __decorate([
@@ -26,7 +27,7 @@ AppModule = __decorate([
                 },
             }),
         ],
-        providers: [ResumeProcessor, PdfParserService],
+        providers: [ResumeProcessor, PdfParserService, StatusPublisherService],
     })
 ], AppModule);
 export { AppModule };

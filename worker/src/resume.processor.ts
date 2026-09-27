@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { PrismaService } from './prisma/prisma.service.js';
 import { PdfParserService } from './pdf/pdf-parser.service.js';
+import { StatusPublisherService } from './events/status-publisher.service.js';
 
 @Processor('resume-processing', { concurrency: 2 })
 export class ResumeProcessor extends WorkerHost {
@@ -11,6 +12,7 @@ export class ResumeProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdfParser: PdfParserService,
+    private readonly statusPublisher: StatusPublisherService,
   ) {
     super();
   }
@@ -25,12 +27,22 @@ export class ResumeProcessor extends WorkerHost {
       where: { id: resumeId },
       data: { status: 'PROCESSING', attempts: attempt },
     });
+    await this.statusPublisher.publish({
+      resumeId,
+      status: 'PROCESSING',
+      attempts: attempt,
+    });
 
     const { text, pages } = await this.pdfParser.parse(resume.filePath);
 
     await this.prisma.resume.update({
       where: { id: resumeId },
       data: { status: 'DONE', extractedText: text },
+    });
+    await this.statusPublisher.publish({
+      resumeId,
+      status: 'DONE',
+      attempts: attempt,
     });
 
     this.logger.log(`Done ${resumeId} — ${text.length} chars from ${pages} pages`);
@@ -42,6 +54,7 @@ export class ResumeProcessor extends WorkerHost {
     const { resumeId } = job.data;
     const maxAttempts = job.opts.attempts ?? 1;
     const isFinal = job.attemptsMade >= maxAttempts;
+    const message = err.message.slice(0, 500);
 
     if (!isFinal) {
       this.logger.warn(
@@ -49,7 +62,13 @@ export class ResumeProcessor extends WorkerHost {
       );
       await this.prisma.resume.update({
         where: { id: resumeId },
-        data: { error: err.message.slice(0, 500) },
+        data: { error: message },
+      });
+      await this.statusPublisher.publish({
+        resumeId,
+        status: 'PROCESSING',
+        attempts: job.attemptsMade,
+        error: message,
       });
       return;
     }
@@ -57,7 +76,13 @@ export class ResumeProcessor extends WorkerHost {
     this.logger.error(`Giving up on ${resumeId} after ${maxAttempts} attempts: ${err.message}`);
     await this.prisma.resume.update({
       where: { id: resumeId },
-      data: { status: 'FAILED', error: err.message.slice(0, 500) },
+      data: { status: 'FAILED', error: message },
+    });
+    await this.statusPublisher.publish({
+      resumeId,
+      status: 'FAILED',
+      attempts: job.attemptsMade,
+      error: message,
     });
   }
 
