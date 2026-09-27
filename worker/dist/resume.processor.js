@@ -8,7 +8,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 var ResumeProcessor_1;
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service.js';
 import { PdfParserService } from './pdf/pdf-parser.service.js';
@@ -37,7 +37,40 @@ let ResumeProcessor = ResumeProcessor_1 = class ResumeProcessor extends WorkerHo
         this.logger.log(`Done ${resumeId} — ${text.length} chars from ${pages} pages`);
         return { resumeId, pages, chars: text.length };
     }
+    async onFailed(job, err) {
+        const { resumeId } = job.data;
+        const maxAttempts = job.opts.attempts ?? 1;
+        const isFinal = job.attemptsMade >= maxAttempts;
+        if (!isFinal) {
+            this.logger.warn(`Attempt ${job.attemptsMade}/${maxAttempts} failed for ${resumeId}: ${err.message}`);
+            await this.prisma.resume.update({
+                where: { id: resumeId },
+                data: { error: err.message.slice(0, 500) },
+            });
+            return;
+        }
+        this.logger.error(`Giving up on ${resumeId} after ${maxAttempts} attempts: ${err.message}`);
+        await this.prisma.resume.update({
+            where: { id: resumeId },
+            data: { status: 'FAILED', error: err.message.slice(0, 500) },
+        });
+    }
+    onCompleted(job) {
+        this.logger.log(`Job ${job.id} completed`);
+    }
 };
+__decorate([
+    OnWorkerEvent('failed'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Function, Error]),
+    __metadata("design:returntype", Promise)
+], ResumeProcessor.prototype, "onFailed", null);
+__decorate([
+    OnWorkerEvent('completed'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Function]),
+    __metadata("design:returntype", void 0)
+], ResumeProcessor.prototype, "onCompleted", null);
 ResumeProcessor = ResumeProcessor_1 = __decorate([
     Processor('resume-processing', { concurrency: 2 }),
     __metadata("design:paramtypes", [PrismaService,

@@ -14,4 +14,10 @@ export declare class ResumeProcessor extends WorkerHost {
         pages: number;
         chars: number;
     }>;
+    onFailed(job: Job<{
+        resumeId: string;
+    }>, err: Error): Promise<void>;
+    onCompleted(job: Job<{
+        resumeId: string;
+    }>): void;
 }

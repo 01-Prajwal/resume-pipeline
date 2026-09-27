@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -35,5 +35,34 @@ export class ResumeProcessor extends WorkerHost {
 
     this.logger.log(`Done ${resumeId} — ${text.length} chars from ${pages} pages`);
     return { resumeId, pages, chars: text.length };
+  }
+
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job<{ resumeId: string }>, err: Error) {
+    const { resumeId } = job.data;
+    const maxAttempts = job.opts.attempts ?? 1;
+    const isFinal = job.attemptsMade >= maxAttempts;
+
+    if (!isFinal) {
+      this.logger.warn(
+        `Attempt ${job.attemptsMade}/${maxAttempts} failed for ${resumeId}: ${err.message}`,
+      );
+      await this.prisma.resume.update({
+        where: { id: resumeId },
+        data: { error: err.message.slice(0, 500) },
+      });
+      return;
+    }
+
+    this.logger.error(`Giving up on ${resumeId} after ${maxAttempts} attempts: ${err.message}`);
+    await this.prisma.resume.update({
+      where: { id: resumeId },
+      data: { status: 'FAILED', error: err.message.slice(0, 500) },
+    });
+  }
+
+  @OnWorkerEvent('completed')
+  onCompleted(job: Job<{ resumeId: string }>) {
+    this.logger.log(`Job ${job.id} completed`);
   }
 }
