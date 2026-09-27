@@ -5,9 +5,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { ResumesController } from './resumes.controller.js';
 import { ResumesService } from './resumes.service.js';
-import { BullModule } from '@nestjs/bullmq';
+import { ResumeEventsService } from './resume-events.service.js';
 let ResumesModule = class ResumesModule {
 };
 ResumesModule = __decorate([
@@ -24,7 +25,7 @@ ResumesModule = __decorate([
             }),
         ],
         controllers: [ResumesController],
-        providers: [ResumesService]
+        providers: [ResumesService, ResumeEventsService],
     })
 ], ResumesModule);
 export { ResumesModule };

@@ -1,7 +1,11 @@
+import { MessageEvent } from '@nestjs/common';
+import { type Observable } from 'rxjs';
 import { ResumesService } from './resumes.service.js';
+import { ResumeEventsService } from './resume-events.service.js';
 export declare class ResumesController {
     private readonly resumesService;
-    constructor(resumesService: ResumesService);
+    private readonly resumeEvents;
+    constructor(resumesService: ResumesService, resumeEvents: ResumeEventsService);
     upload(file?: Express.Multer.File): Promise<{
         id: string;
         status: import("../generated/prisma/enums.js").ResumeStatus;
@@ -15,6 +19,7 @@ export declare class ResumesController {
         createdAt: Date;
         updatedAt: Date;
     }[]>;
+    events(id: string): Observable<MessageEvent>;
     findOne(id: string): Promise<{
         error: string | null;
         id: string;
