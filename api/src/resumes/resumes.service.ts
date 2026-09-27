@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { ResumeStatus } from '../generated/prisma/enums.js';
 
 @Injectable()
 export class ResumesService {
@@ -42,21 +43,47 @@ export class ResumesService {
         return { id: resume.id, status: resume.status };
     }
 
-    findAll() {
-        return this.prisma.resume.findMany({
-            orderBy: { createdAt: 'desc' },
-            select: {
-                id: true,
-                originalName: true,
-                status: true,
-                attempts: true,
-                error: true,
-                createdAt: true,
-                updatedAt: true,
-            },
-        });
-    }
+  findAll(status?: ResumeStatus) {
+    return this.prisma.resume.findMany({
+      where: status ? { status } : undefined,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        originalName: true,
+        status: true,
+        attempts: true,
+        error: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+async retry(id: string) {
+  const resume = await this.prisma.resume.findUnique({ where: { id } });
+  if (!resume) {
+    throw new NotFoundException(`Resume ${id} not found`);
+  }
+  if (resume.status !== 'FAILED') {
+    throw new BadRequestException(
+      `Only failed resumes can be retried (this one is ${resume.status})`,
+    );
+  }
 
+  // The dead job still occupies this jobId — remove it or the add is ignored
+  const existing = await this.queue.getJob(id);
+  if (existing) {
+    await existing.remove();
+  }
+
+  const updated = await this.prisma.resume.update({
+    where: { id },
+    data: { status: 'QUEUED', attempts: 0, error: null },
+  });
+
+  await this.queue.add('process-resume', { resumeId: id }, { jobId: id });
+
+  return { id: updated.id, status: updated.status };
+}
     async findOne(id: string) {
         const resume = await this.prisma.resume.findUnique({
             where: { id },

@@ -41,8 +41,9 @@ let ResumesService = class ResumesService {
         await this.queue.add('process-resume', { resumeId: resume.id }, { jobId: resume.id });
         return { id: resume.id, status: resume.status };
     }
-    findAll() {
+    findAll(status) {
         return this.prisma.resume.findMany({
+            where: status ? { status } : undefined,
             orderBy: { createdAt: 'desc' },
             select: {
                 id: true,
@@ -54,6 +55,25 @@ let ResumesService = class ResumesService {
                 updatedAt: true,
             },
         });
+    }
+    async retry(id) {
+        const resume = await this.prisma.resume.findUnique({ where: { id } });
+        if (!resume) {
+            throw new NotFoundException(`Resume ${id} not found`);
+        }
+        if (resume.status !== 'FAILED') {
+            throw new BadRequestException(`Only failed resumes can be retried (this one is ${resume.status})`);
+        }
+        const existing = await this.queue.getJob(id);
+        if (existing) {
+            await existing.remove();
+        }
+        const updated = await this.prisma.resume.update({
+            where: { id },
+            data: { status: 'QUEUED', attempts: 0, error: null },
+        });
+        await this.queue.add('process-resume', { resumeId: id }, { jobId: id });
+        return { id: updated.id, status: updated.status };
     }
     async findOne(id) {
         const resume = await this.prisma.resume.findUnique({

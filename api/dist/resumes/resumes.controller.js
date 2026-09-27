@@ -17,6 +17,8 @@ import { from, map, merge, filter } from 'rxjs';
 import { ResumesService } from './resumes.service.js';
 import { ResumeEventsService } from './resume-events.service.js';
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+import { Query } from '@nestjs/common';
+const STATUSES = ['QUEUED', 'PROCESSING', 'DONE', 'FAILED'];
 let ResumesController = class ResumesController {
     resumesService;
     resumeEvents;
@@ -30,8 +32,14 @@ let ResumesController = class ResumesController {
         }
         return this.resumesService.create(file);
     }
-    findAll() {
-        return this.resumesService.findAll();
+    findAll(status) {
+        if (status && !STATUSES.includes(status)) {
+            throw new BadRequestException(`status must be one of ${STATUSES.join(', ')}`);
+        }
+        return this.resumesService.findAll(status);
+    }
+    retry(id) {
+        return this.resumesService.retry(id);
     }
     events(id) {
         const current$ = from(this.resumesService.findOne(id)).pipe(map((resume) => ({
@@ -44,6 +52,9 @@ let ResumesController = class ResumesController {
             .stream()
             .pipe(filter((event) => event.resumeId === id));
         return merge(current$, updates$).pipe(map((data) => ({ data })));
+    }
+    allEvents() {
+        return this.resumeEvents.stream().pipe(map((data) => ({ data })));
     }
     findOne(id) {
         return this.resumesService.findOne(id);
@@ -63,10 +74,19 @@ __decorate([
 ], ResumesController.prototype, "upload", null);
 __decorate([
     Get(),
+    __param(0, Query('status')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], ResumesController.prototype, "findAll", null);
+__decorate([
+    Post(':id/retry'),
+    HttpCode(202),
+    __param(0, Param('id', ParseUUIDPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], ResumesController.prototype, "retry", null);
 __decorate([
     Sse(':id/events'),
     __param(0, Param('id', ParseUUIDPipe)),
@@ -74,6 +94,12 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Function)
 ], ResumesController.prototype, "events", null);
+__decorate([
+    Sse('events'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Function)
+], ResumesController.prototype, "allEvents", null);
 __decorate([
     Get(':id'),
     __param(0, Param('id', ParseUUIDPipe)),

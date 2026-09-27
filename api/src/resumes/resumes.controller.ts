@@ -18,7 +18,10 @@ import { ResumesService } from './resumes.service.js';
 import { ResumeEventsService } from './resume-events.service.js';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
+import { Query } from '@nestjs/common';
+import { ResumeStatus } from '../generated/prisma/enums.js';
 
+const STATUSES = ['QUEUED', 'PROCESSING', 'DONE', 'FAILED'] as const;
 @Controller('resumes')
 export class ResumesController {
   constructor(
@@ -41,11 +44,18 @@ export class ResumesController {
     return this.resumesService.create(file);
   }
 
-  @Get()
-  findAll() {
-    return this.resumesService.findAll();
+ @Get()
+  findAll(@Query('status') status?: string) {
+    if (status && !STATUSES.includes(status as (typeof STATUSES)[number])) {
+      throw new BadRequestException(`status must be one of ${STATUSES.join(', ')}`);
+    }
+    return this.resumesService.findAll(status as ResumeStatus | undefined);
   }
-
+  @Post(':id/retry')
+  @HttpCode(202)
+  retry(@Param('id', ParseUUIDPipe) id: string) {
+    return this.resumesService.retry(id);
+  }
   @Sse(':id/events')
   events(@Param('id', ParseUUIDPipe) id: string): Observable<MessageEvent> {
     const current$ = from(this.resumesService.findOne(id)).pipe(
@@ -63,7 +73,10 @@ export class ResumesController {
 
     return merge(current$, updates$).pipe(map((data) => ({ data }) as MessageEvent));
   }
-
+  @Sse('events')
+  allEvents(): Observable<MessageEvent> {
+    return this.resumeEvents.stream().pipe(map((data) => ({ data }) as MessageEvent));
+  }
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.resumesService.findOne(id);
